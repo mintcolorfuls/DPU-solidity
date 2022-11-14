@@ -9,8 +9,9 @@ const DEFAULT_OPTION = -1;
 async function init() {
     const provider = new Web3.providers.HttpProvider(WEB3_URL);
     web3 = new Web3(provider);
+    accounts = await web3.eth.getAccounts();
     await deployContract();
-    await populateAccountTable();
+    //await populateAccountTable();
 }
 
 async function getLoanInfo() {
@@ -31,7 +32,7 @@ async function getLoanInfo() {
     const interestRate = Number((rateNumberator * 100 / rateDenominator)).toFixed(2);
     $('#InterestRate').html(interestRate);
 
-    await populateAccountTable(); // update เงิน
+    //await populateAccountTable(); // update เงิน
 }
 
 async function deployContract() {
@@ -44,6 +45,7 @@ async function deployContract() {
             contractAddress = simpleLoan.address;
             console.log('Simple loan contract', simpleLoan);
             await getLoanInfo();
+            await populateAccountTable();
         } catch (err) {
             console.log(err)
         }
@@ -61,9 +63,26 @@ async function populateAccountTable() {
     // ดึงข้อมูล account
     try 
     {
-        accounts = await web3.eth.getAccounts();
+        //accounts = await web3.eth.getAccounts();
         await getBalance();
         await getDebtInfo();
+
+        const borrowers = await simpleLoan.getBorrowers.call(); //เรียกข้อมูลมาดู
+        const currentDebts = []; //เก็บหนี้ของทั้ง 10 คน
+        for(let i = 0; i < accounts.length; i++) {
+            let found = false; //ใช้เช็คว่าหาเจอหรือไม่
+            for(let j = 0; j < borrowers.length; j++) { //ลูปใน array ที่เก็บรายชื่อของผู้กู้
+                if(accounts[i] == borrowers[j]) {
+                    currentDebts[i] = web3.utils.fromWei(debts[j], 'ether');
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) {
+                currentDebts[i] = 0;
+            }
+        }
+
         if (Array.isArray(accounts) && accounts.length > 0) {
             let htmlStr = '';
             for (let index = 0; index < accounts.length; index++) {
@@ -72,7 +91,7 @@ async function populateAccountTable() {
                 htmlStr += `<th scope="row">${index + 1}</th>`;
                 htmlStr += `<td>${accounts[index]}</td>`;
                 htmlStr += `<td>${Number(balanceEth).toFixed(8)}</td>`;
-                htmlStr += `<td></td>`;
+                htmlStr += `<td>${currentDebts[index]}</td>`;
                 htmlStr += '</tr>';
             }
             // ${web3.utils.fromWei(debts[index], 'ether')}
