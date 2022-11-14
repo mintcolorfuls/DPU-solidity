@@ -56,6 +56,14 @@ contract SimpleLoan {
         _;
     }
 
+    function getBorrowers() public view  returns (address[] memory) {
+        return borrowers;
+    }
+
+    function  getDebt(address borrower) public view  returns (uint) {
+        return debts[borrower].balance;
+    }
+
     // event เป็นการสร้าง log
     event Deposited(uint time, uint amout, uint balance);
     // ฟังชันที่รับเงินได้จะต้องมี payable

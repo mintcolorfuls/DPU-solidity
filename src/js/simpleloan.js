@@ -9,8 +9,29 @@ const DEFAULT_OPTION = -1;
 async function init() {
     const provider = new Web3.providers.HttpProvider(WEB3_URL);
     web3 = new Web3(provider);
-    await populateAccountTable();
     await deployContract();
+    await populateAccountTable();
+}
+
+async function getLoanInfo() {
+    owner = accounts[0];
+    $('#LoanOwner').html(owner);
+    $('#LoanContractAddress').html(contractAddress);
+    const firstDeposit = web3.utils.toWei('20', 'ether');
+    // เวลาเรียกใช้จะต้องส่ง (parameter, data => json obj)
+    // value คือ เงิน
+    await simpleLoan.deposit({value: firstDeposit, from: owner}); // เรียกใช้ฟังชันก์ที่เราเขียนไว้ใน solidity
+    const contractBalance = await web3.eth.getBalance(contractAddress);
+    $('#LoanContractBalance').html(web3.utils.fromWei(contractBalance, 'ether'));
+    const borrowers = await simpleLoan.getBorrowers.call();
+    $('#BorrowerCount').html(borrowers.length);
+
+    const rateNumberator = await simpleLoan.interestRateNumberator.call();
+    const rateDenominator = await simpleLoan.interestRateDenominator.call();
+    const interestRate = Number((rateNumberator * 100 / rateDenominator)).toFixed(2);
+    $('#InterestRate').html(interestRate);
+
+    await populateAccountTable(); // update เงิน
 }
 
 async function deployContract() {
@@ -22,10 +43,18 @@ async function deployContract() {
             simpleLoan = await contract.deployed();
             contractAddress = simpleLoan.address;
             console.log('Simple loan contract', simpleLoan);
+            await getLoanInfo();
         } catch (err) {
             console.log(err)
         }
     });
+}
+
+async function getDebtInfo(parems) {
+    const borrowers = await simpleLoan.getBorrowers.call();
+    debts = await Promise.all(borrowers.map(async borrower => {
+        await simpleLoan.getDebt(borrower)
+    }))
 }
 
 async function populateAccountTable() {
@@ -34,6 +63,7 @@ async function populateAccountTable() {
     {
         accounts = await web3.eth.getAccounts();
         await getBalance();
+        await getDebtInfo();
         if (Array.isArray(accounts) && accounts.length > 0) {
             let htmlStr = '';
             for (let index = 0; index < accounts.length; index++) {
@@ -45,7 +75,7 @@ async function populateAccountTable() {
                 htmlStr += `<td></td>`;
                 htmlStr += '</tr>';
             }
-
+            // ${web3.utils.fromWei(debts[index], 'ether')}
             $('#AccountList').html(htmlStr);
         }
     }
