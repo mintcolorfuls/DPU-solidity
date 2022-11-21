@@ -24,8 +24,8 @@ async function setupBorrowButton() {
     $('#BorrowBtn').on('click', async e => {
         let borrowAmount = parseFloat($('#BorrowAmount').val());
         if(isNaN(borrowAmount) || typeof borrower == undefined) return;
-    });
-    const amount = web3.utils.toWei(String(borrowAmount), 'ether');
+
+        const amount = web3.utils.toWei(String(borrowAmount), 'ether');
     try {
         const estGas = await simpleLoan.borrow.estimateGas(amount, {from: borrower}); //คำนวณค่า gas
         const sedingGas = Math.ceil(estGas * 1.5);
@@ -41,6 +41,7 @@ async function setupBorrowButton() {
     finally {
         ResetBorrowControl()
     }
+    });
 }
 
 function ResetBorrowControl() {
@@ -93,13 +94,13 @@ async function firstTimeDeposit() {
 }
 
 async function getLoanInfo() {
-    owner = accounts[0];
+    //owner = accounts[0];
     $('#LoanOwner').html(owner);
     $('#LoanContractAddress').html(contractAddress);
-    const firstDeposit = web3.utils.toWei('20', 'ether');
+    //const firstDeposit = web3.utils.toWei('20', 'ether');
     // เวลาเรียกใช้จะต้องส่ง (parameter, data => json obj)
     // value คือ เงิน
-    await simpleLoan.deposit({value: firstDeposit, from: owner}); // เรียกใช้ฟังชันก์ที่เราเขียนไว้ใน solidity
+    //await simpleLoan.deposit({value: firstDeposit, from: owner}); // เรียกใช้ฟังชันก์ที่เราเขียนไว้ใน solidity
     const contractBalance = await web3.eth.getBalance(contractAddress);
     $('#LoanContractBalance').html(web3.utils.fromWei(contractBalance, 'ether'));
     const borrowers = await simpleLoan.getBorrowers.call();
@@ -113,6 +114,62 @@ async function getLoanInfo() {
     //await populateAccountTable(); // update เงิน
 }
 
+async function setupNewInterestRateButton() {
+    $('#NewInterestRateBtn').on('click', async e => {
+        let newRate = $('#NewInterestRate').val();
+        if(isNaN(newRate) || newRate <= 0) {
+            alert('Invalid interest rate');
+            return;
+        }
+
+        try {
+            const estGas = await simpleLoan.setInterestRate.estimateGas(newRate, {from: owner});
+            const sendingGas = Math.ceil(estGas * 1.5);
+            await simpleLoan.setInterestRate(newRate, {from: owner, gas: sendingGas});
+            const rateNumerator = await simpleLoan.interestRateNumberator.call();
+            const rateDenominator = await simpleLoan.interestRateDenominator.call();
+
+            $('#InterestRate').html(Number(rateNumerator * 100 / rateDenominator).toFixed(2));
+        } catch (err) {
+
+        } finally {
+            $('#NewInterestRate').val('');
+        }
+    });
+}
+
+async function setupWithdrawButton() {
+    $('#WithdrawBtn').on('click', async e => {
+        let amount = String($('#WithdrawAmount').val());
+        if(isNaN(amount) || amount <= 0) {
+            alert('Invalid withdraw amount');
+            return;
+        }
+
+        const contractBalanceBN = new web3.utils.BN(await web3.eth.getBalance(contractAddress));
+        let withdrawBN = new web3.utils.BN(web3.utils.toWei(amount, 'ether'));
+
+        // ถ้ายอดถอนมากกว่า balance
+        if(withdrawBN.gt(contractBalanceBN)) {
+            alert('Insufficient fund !'); //เงินไม่พอ
+            return;
+        }
+
+        try {
+            let estGas = await simpleLoan.withdraw.estimateGas(withdrawBN, {from: owner});
+            const sendingGas = Math.ceil(estGas * 1.5);
+            await simpleLoan.withdraw(withdrawBN, {from: owner, gas: sendingGas});
+        } catch (err) {
+            console.log(err)
+        } finally {
+            $('#WithdrawAmount').val('');
+        }
+
+        await populateAccountTable();
+        await getLoanInfo();
+    });
+}
+
 async function deployContract() {
     // ABI = Application blockchain interface
     $.getJSON('SimpleLoan.json', async contractABI => {
@@ -122,12 +179,17 @@ async function deployContract() {
             simpleLoan = await contract.deployed();
             contractAddress = simpleLoan.address;
             console.log('Simple loan contract', simpleLoan);
+
+            await setupEventListener();
+            await firstTimeDeposit();
             await getLoanInfo();
             await populateAccountTable();
             await updateSelectOptions();
             await setupBorrowButton();
             await setupPaybackButton();
-            await setupEventListener();
+            await setupWithdrawButton();
+            await setupNewInterestRateButton();
+
         } catch (err) {
             console.log(err)
         }
@@ -168,7 +230,7 @@ async function populateAccountTable() {
         if (Array.isArray(accounts) && accounts.length > 0) {
             let htmlStr = '';
             for (let index = 0; index < accounts.length; index++) {
-                const balanceEth = await web3.utils.fromWei(balances[index], 'ether');
+                const balanceEth = await web3.utils.fromWei(String(balances[index]), 'ether');
                 htmlStr += '<tr>';
                 htmlStr += `<th scope="row">${index + 1}</th>`;
                 htmlStr += `<td>${accounts[index]}</td>`;
@@ -194,8 +256,8 @@ async function setupPaybackButton() {
     $('#PaybackBtn').on('click', async e => {
         let paybackAmount = parseFloat($('#PaybackAmount').val());
         if(isNaN(borrowAmount) || typeof payer == undefined) return;
-    });
-    const amount = web3.utils.toWei(String(paybackAmount), 'ether');
+
+        const amount = web3.utils.toWei(String(paybackAmount), 'ether');
     try {
         const estGas = await simpleLoan.payback.estimateGas({value: amount, from: payer}); //คำนวณค่า gas
         const sedingGas = Math.ceil(estGas * 1.5);
@@ -211,6 +273,7 @@ async function setupPaybackButton() {
     finally {
         ResetPaybackControl()
     }
+    });
 }
 
 function ResetPaybackControl() {
@@ -235,42 +298,42 @@ async function setupEventListener() {
         //รับข้อมูลที่ถูกส่งมา 
         // js จะแปรงมิลลิวิเป็น date ให้
         //แปรง วินาที เป็น มิลลิวิ
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
 
         //รับเงินจากอีเว้น แล้วนำแปรงจาก เว้ย เป็น อีเทอร์
-        const amountEther = web3.utils.fromWei(e.returnValue.amount, 'ether');
+        const amountEther = web3.utils.fromWei(e.returnValues.amount, 'ether');
         const html = `<li class='lead' >[Deposited]:Owner has deposited ${amountEther} ETher at ${dateTime}</li>`;
         $('#EventLog').append(html);
     });
 
     simpleLoan.InterestRateChanged().on('data', e => {
-        const newRate = e.returnValue.newRate;
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
+        const newRate = e.returnValues.newRate;
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
         const html = `<li class='lead'>[InterestRateChanged]:Interest rate has change to ${newRate}% at ${dateTime}</li>`;
         $('#EventLog').append(html);
     });
 
     simpleLoan.Borrwed().on('data', e => {
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
-        const amountEther = web3.utils.fromWei(e.returnValue.amount, 'ether');
-        const borrower = e.returnValue.borrower;
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
+        const amountEther = web3.utils.fromWei(e.returnValues.amount, 'ether');
+        const borrower = e.returnValues.borrower;
         const html = `<li class='lead'>[Borrwed]:Borrower(${borrower}) has borrowed ${amountEther} Ether at ${dateTime}</li>`;
         $('#EventLog').append(html);
     });
     simpleLoan.Paybacked().on('data', e => {
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
-        const amountEther = web3.utils.fromWei(e.returnValue.amount, 'ether');
-        const borrower = e.returnValue.borrower;
-        const remainingEther = web3.utils.fromWei(e.returnValue.remaining, 'ether');
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
+        const amountEther = web3.utils.fromWei(e.returnValues.amount, 'ether');
+        const borrower = e.returnValues.borrower;
+        const remainingEther = web3.utils.fromWei(e.returnValues.remaining, 'ether');
         const html = `<li class='lead'>[Paybacked]:Borrower(${borrower}) has repaid ${amountEther} Ether(${remainingEther} Ether remaining) at ${dateTime}</li>`;
         $('#EventLog').append(html);
     });
     simpleLoan.LatePayback().on('data', e => {
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
-        const amountEther = web3.utils.fromWei(e.returnValue.amount, 'ether');
-        const borrower = e.returnValue.borrower;
-        const remainingEther = web3.utils.fromWei(e.returnValue.remaining, 'ether');
-        const period = e.returnValue.period;
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
+        const amountEther = web3.utils.fromWei(e.returnValues.amount, 'ether');
+        const borrower = e.returnValues.borrower;
+        const remainingEther = web3.utils.fromWei(e.returnValues.remaining, 'ether');
+        const period = e.returnValues.period;
 
         const html = `<li class='lead'>
         [LatePayback]:Borrower(${borrower}) 
@@ -281,7 +344,7 @@ async function setupEventListener() {
         $('#EventLog').append(html);
     });
     simpleLoan.deptClreared().on('data', e => {
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
         const borrower = e.returnValue.borrower;
 
         const html = `<li class='lead'>
@@ -290,13 +353,13 @@ async function setupEventListener() {
         $('#EventLog').append(html);
     });
     simpleLoan.Withdraw().on('data', e => {
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
-        const amountEther = web3.utils.fromWei(e.returnValue.amount, 'ether');
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
+        const amountEther = web3.utils.fromWei(e.returnValues.amount, 'ether');
         const html = `<li class='lead' >[Withdraw]:Owner has withdraw ${amountEther} ETher at ${dateTime}</li>`;
         $('#EventLog').append(html);
     });
     simpleLoan.ClosedDown().on('data', e => {
-        const dateTime = new Date(e.returnValue.time * 1000).toLocaleString();
+        const dateTime = new Date(e.returnValues.time * 1000).toLocaleString();
         const html = `<li class='lead' >[ClosedDown]:Simple loan contract is destroyed at ${dateTime}</li>`;
         $('#EventLog').append(html);
     });
