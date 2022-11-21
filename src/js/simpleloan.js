@@ -25,11 +25,11 @@ async function setupBorrowButton() {
         let borrowAmount = parseFloat($('#BorrowAmount').val());
         if(isNaN(borrowAmount) || typeof borrower == undefined) return;
     });
-    const amount = web3.utils.toWei(borrowAmount, 'ether');
+    const amount = web3.utils.toWei(String(borrowAmount), 'ether');
     try {
         const estGas = await simpleLoan.borrow.estimateGas(amount, {from: borrower}); //คำนวณค่า gas
         const sedingGas = Math.ceil(estGas * 1.5);
-        const receipt = await simpleLoan.borrow(amount, {from: borrower, gas: sedingGas});
+        const { receipt } = await simpleLoan.borrow(amount, {from: borrower, gas: sedingGas});
         updateBorrowLog(receipt);
         await getLoanInfo();
         await populateAccountTable();
@@ -79,6 +79,17 @@ async function updateSelectOptions() {
         payerIndex = e.target.value;
         payer = accounts[payerIndex];
     })
+}
+
+async function firstTimeDeposit() {
+    owner = accounts[0];
+    const firstDeposit = web3.utils.toWei('20', 'ether');
+
+    try {
+        await simpleLoan.deposit({value: firstDeposit, from: owner});
+    } catch (err) {
+        console.log(err);
+    }
 }
 
 async function getLoanInfo() {
@@ -184,11 +195,11 @@ async function setupPaybackButton() {
         let paybackAmount = parseFloat($('#PaybackAmount').val());
         if(isNaN(borrowAmount) || typeof payer == undefined) return;
     });
-    const amount = web3.utils.toWei(paybackAmount, 'ether');
+    const amount = web3.utils.toWei(String(paybackAmount), 'ether');
     try {
-        const estGas = await simpleLoan.payback.estimateGas(amount, {from: payer}); //คำนวณค่า gas
+        const estGas = await simpleLoan.payback.estimateGas({value: amount, from: payer}); //คำนวณค่า gas
         const sedingGas = Math.ceil(estGas * 1.5);
-        const receipt = await simpleLoan.payback(amount, {from: payer, gas: sedingGas});
+        const {receipt} = await simpleLoan.payback({value: amount, from: payer, gas: sedingGas});
         updatePaybackLog(receipt);
         await getLoanInfo();
         await populateAccountTable();
@@ -203,8 +214,8 @@ async function setupPaybackButton() {
 }
 
 function ResetPaybackControl() {
-    $('PaybackAmount').val('');
-    $('PaybackBorrowers').val(-1);
+    $('#PaybackAmount').val('');
+    $('#PaybackBorrowers').val(-1);
     //$('PaybackBorrowers').val(-1);
 }
 
@@ -216,7 +227,7 @@ function updatePaybackLog(receipt) {
         <p>Payer ${receipt.from}</p>
         <p>Gas used ${receipt.cumulativeGasUsed}</p>
     </li>`;
-    $('PaybackTxLog').append(logEntry);
+    $('#PaybackTxLog').append(logEntry);
 }
 
 async function setupEventListener() {
